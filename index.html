@@ -196,25 +196,29 @@ body {
 
 /* CARDS */
 .cards-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px; margin: 20px 0;
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 12px; margin: 16px 0;
 }
+@media (max-width: 1400px) { .cards-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px)  { .cards-grid { grid-template-columns: repeat(2, 1fr); } }
 .card {
   background: white; border: 1px solid var(--gray-200);
-  border-radius: var(--radius); padding: 20px;
+  border-radius: var(--radius); padding: 16px 18px;
   box-shadow: var(--shadow-sm); transition: box-shadow 0.2s;
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-height: 130px;
 }
 .card:hover { box-shadow: var(--shadow-md); }
-.card-label { font-size: 11px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-.card-value { font-size: 24px; font-weight: 800; color: var(--gray-900); line-height: 1.1; font-family: 'JetBrains Mono', monospace; }
-.card-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; font-weight: 500; }
-.card-icon { font-size: 24px; margin-bottom: 8px; }
+.card-label { font-size: 10px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; line-height: 1.3; }
+.card-value { font-size: 18px; font-weight: 800; color: var(--gray-900); line-height: 1.15; font-family: 'JetBrains Mono', monospace; word-break: break-all; }
+.card-sub { font-size: 11px; color: var(--gray-500); margin-top: 5px; font-weight: 500; }
+.card-icon { font-size: 20px; margin-bottom: 6px; }
 .card.accent {
   background: linear-gradient(135deg, var(--green-700) 0%, var(--green-900) 100%);
-  border-color: var(--green-600);
+  border-color: var(--green-600); min-height: 130px;
 }
 .card.accent .card-label { color: var(--green-300); }
-.card.accent .card-value { color: white; }
+.card.accent .card-value { color: white; font-size: 22px; }
 .card.accent .card-sub { color: var(--green-300); }
 .card.positive .card-value { color: var(--green-600); }
 .card.negative .card-value { color: var(--red-500); }
@@ -696,6 +700,12 @@ tr.sim-modified td.cell-green { color: #5b21b6 !important; }
     <div class="section-title">Resumo do Portfólio</div>
     <div class="cards-grid">
       <div class="card">
+        <div class="card-icon">🛒</div>
+        <div class="card-label">Valor do Consumo (CMM12)</div>
+        <div class="card-value" id="cardConsumoVal">R$ 0</div>
+        <div class="card-sub" id="cardConsumoSub">CMM12 × Valor Unitário</div>
+      </div>
+      <div class="card">
         <div class="card-icon">📦</div>
         <div class="card-label">ES Atual — Valor Total</div>
         <div class="card-value" id="cardAtualVal">R$ 0</div>
@@ -723,7 +733,7 @@ tr.sim-modified td.cell-green { color: #5b21b6 !important; }
         <div class="card-label">Nível de Serviço Atual</div>
         <div class="card-value" id="cardNS">95%</div>
         <div class="card-sub" id="cardZ">Z = 1.645</div>
-        <button class="btn" onclick="openModal()" style="margin-top:12px;background:rgba(255,255,255,0.2);color:white;padding:6px 14px;font-size:11px;border-radius:6px;border:1px solid rgba(255,255,255,0.3)">ALTERAR NÍVEL ›</button>
+        <button class="btn" onclick="openModal()" style="margin-top:10px;background:rgba(255,255,255,0.2);color:white;padding:5px 12px;font-size:11px;border-radius:6px;border:1px solid rgba(255,255,255,0.3)">ALTERAR NÍVEL ›</button>
       </div>
     </div>
 
@@ -1037,6 +1047,8 @@ function renderCards() {
   const totalCmm = rows.reduce((s,r) => s + r.cmm12, 0);
   const totalEsAtualQty = rows.reduce((s,r) => s + r.esAtual, 0);
   const totalEsCalcQty = rows.reduce((s,r) => s + r.esCalc, 0);
+  // Valor do consumo: CMM12 × Valor Unitário por SKU
+  const totalConsumo = rows.reduce((s,r) => s + (r.cmm12 * r.valorUnit), 0);
 
   const cobAtual = totalCmm > 0 ? totalEsAtualQty / totalCmm : 0;
   const cobCalc = totalCmm > 0 ? totalEsCalcQty / totalCmm : 0;
@@ -1044,6 +1056,8 @@ function renderCards() {
   const incr = totalCalc - totalAtual;
   const incrCob = cobCalc - cobAtual;
 
+  document.getElementById('cardConsumoVal').textContent = fmtBRL(totalConsumo);
+  document.getElementById('cardConsumoSub').textContent = rows.length + ' SKUs · CMM12 × Valor Unit.';
   document.getElementById('cardAtualVal').textContent = fmtBRL(totalAtual);
   document.getElementById('cardAtualCob').textContent = fmtNum(cobAtual) + ' meses de cobertura atual';
   document.getElementById('cardCalcVal').textContent = fmtBRL(totalCalc);
@@ -1296,11 +1310,20 @@ function renderSimPairs() {
     </div>`;
   }
 
+  // Helper: meses → dias e vice-versa (1 mês = 30 dias)
+  const mesToDias = m => parseFloat((m * 30).toFixed(2));
+  const diasToMes = d => parseFloat((d / 30).toFixed(6));
+
   const pairsHTML = pairs.map(p => {
     const orig = ltMap[p.key.toUpperCase()] || { ltMedio: 0, ltDesvio: 0 };
     const ov   = ltOverrides[p.key.toUpperCase()] || {};
-    const curMedia  = ov.ltMedio  !== undefined ? ov.ltMedio  : orig.ltMedio;
-    const curDesvio = ov.ltDesvio !== undefined ? ov.ltDesvio : orig.ltDesvio;
+    // ltOverrides armazena em MESES internamente; exibir em DIAS
+    const curMediaMes  = ov.ltMedio  !== undefined ? ov.ltMedio  : orig.ltMedio;
+    const curDesvioMes = ov.ltDesvio !== undefined ? ov.ltDesvio : orig.ltDesvio;
+    const curMediaDias  = mesToDias(curMediaMes);
+    const curDesvioDias = mesToDias(curDesvioMes);
+    const origMediaDias  = mesToDias(orig.ltMedio);
+    const origDesvioDias = mesToDias(orig.ltDesvio);
     const isModified = ov.ltMedio !== undefined || ov.ltDesvio !== undefined;
     const pairId = p.key.replace(/[^a-zA-Z0-9]/g,'_');
     return `
@@ -1316,32 +1339,32 @@ function renderSimPairs() {
         <div class="sim-field">
           <label>Lead Time Médio</label>
           <div class="sim-field-wrap">
-            <input type="number" step="0.01" min="0"
+            <input type="number" step="1" min="0"
               id="lt_media_${pairId}"
-              value="${fmtNum(curMedia,4)}"
-              data-orig="${orig.ltMedio}"
+              value="${curMediaDias}"
+              data-orig-mes="${orig.ltMedio}"
               data-key="${p.key.toUpperCase()}"
               data-field="ltMedio"
-              oninput="onSimInput(this,'${pairId}')"
+              oninput="onSimInputDias(this,'${pairId}')"
               class="${isModified && ov.ltMedio!==undefined?'changed':''}">
-            <span class="sim-field-unit">meses</span>
+            <span class="sim-field-unit">dias</span>
           </div>
-          <div class="sim-original">Original: ${fmtNum(orig.ltMedio,4)} meses</div>
+          <div class="sim-original">Original: ${origMediaDias} dias (${fmtNum(orig.ltMedio,4)} meses)</div>
         </div>
         <div class="sim-field">
           <label>Desvio Padrão LT</label>
           <div class="sim-field-wrap">
-            <input type="number" step="0.01" min="0"
+            <input type="number" step="1" min="0"
               id="lt_desvio_${pairId}"
-              value="${fmtNum(curDesvio,4)}"
-              data-orig="${orig.ltDesvio}"
+              value="${curDesvioDias}"
+              data-orig-mes="${orig.ltDesvio}"
               data-key="${p.key.toUpperCase()}"
               data-field="ltDesvio"
-              oninput="onSimInput(this,'${pairId}')"
+              oninput="onSimInputDias(this,'${pairId}')"
               class="${isModified && ov.ltDesvio!==undefined?'changed':''}">
-            <span class="sim-field-unit">meses</span>
+            <span class="sim-field-unit">dias</span>
           </div>
-          <div class="sim-original">Original: ${fmtNum(orig.ltDesvio,4)} meses</div>
+          <div class="sim-original">Original: ${origDesvioDias} dias (${fmtNum(orig.ltDesvio,4)} meses)</div>
         </div>
       </div>
     </div>`;
@@ -1355,20 +1378,25 @@ function renderSimPairs() {
     `<div class="sim-pairs">${pairsHTML}</div>`;
 }
 
-function onSimInput(input, pairId) {
-  const key   = input.dataset.key;
-  const field = input.dataset.field;
-  const orig  = parseFloat(input.dataset.orig);
-  const val   = parseFloat(input.value);
+// onSimInputDias: usuário digita em DIAS → converte para meses → armazena em ltOverrides
+function onSimInputDias(input, pairId) {
+  const key      = input.dataset.key;
+  const field    = input.dataset.field;
+  const origMes  = parseFloat(input.dataset.origMes);   // original em meses
+  const diasVal  = parseFloat(input.value);
+  const mesMes   = isNaN(diasVal) ? NaN : diasVal / 30; // converte dias → meses
+
   if (!ltOverrides[key]) ltOverrides[key] = {};
-  if (!isNaN(val) && val !== orig) {
-    ltOverrides[key][field] = val;
+
+  if (!isNaN(mesMes) && Math.abs(mesMes - origMes) > 1e-9) {
+    ltOverrides[key][field] = mesMes;
     input.classList.add('changed');
   } else {
     delete ltOverrides[key][field];
     input.classList.remove('changed');
     if (Object.keys(ltOverrides[key]).length === 0) delete ltOverrides[key];
   }
+
   // Mark pair card
   const pairEl = document.getElementById('pair_' + pairId);
   const isModified = ltOverrides[key] && Object.keys(ltOverrides[key]).length > 0;
@@ -1377,6 +1405,7 @@ function onSimInput(input, pairId) {
     `Chave: ${key}${isModified?' <span style="color:#7c3aed;font-weight:700">• Alterado</span>':''}`;
 
   updateSimBadge();
+
   // Re-render impact block without losing focus
   const modCount = Object.keys(ltOverrides).length;
   if (modCount > 0) {
@@ -1386,7 +1415,6 @@ function onSimInput(input, pairId) {
     const dCob  = sim2.cobCalc - orig2.cobCalc;
     const dValClass = dVal >= 0 ? 'delta-pos' : 'delta-neg';
     const dCobClass = dCob >= 0 ? 'delta-pos' : 'delta-neg';
-    // update existing impact block if present, else prepend
     let impact = document.querySelector('.sim-impact');
     const newImpactHTML = `
       <div class="sim-impact-title">📊 Impacto da simulação (${modCount} alteração${modCount>1?'ões':''})</div>
