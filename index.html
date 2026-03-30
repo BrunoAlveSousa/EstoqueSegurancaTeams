@@ -485,6 +485,27 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
   font-family: "JetBrains Mono", monospace;
 }
 
+/* Replicate button — aparece abaixo do campo no primeiro card */
+.sim-replicate-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 6px; padding: 3px 10px 3px 8px;
+  border-radius: 6px; border: 1.5px solid #c4b5fd;
+  background: #f5f3ff; color: #6d28d9;
+  font-family: "Sora", sans-serif; font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all 0.18s; white-space: nowrap;
+  opacity: 0; pointer-events: none;   /* oculto por padrão */
+}
+.sim-replicate-btn.has-value {
+  opacity: 1; pointer-events: all;    /* aparece quando há valor */
+}
+.sim-replicate-btn:hover {
+  background: #ede9fe; border-color: #7c3aed;
+  box-shadow: 0 2px 8px rgba(109,40,217,0.2);
+  transform: translateY(-1px);
+}
+.sim-replicate-btn:active { transform: none; }
+.sim-replicate-btn svg { flex-shrink: 0; }
+
 .sim-impact {
   background: linear-gradient(135deg, #f5f3ff, #ede9fe); border: 1.5px solid #c4b5fd;
   border-radius: 12px; padding: 16px; margin-bottom: 20px;
@@ -858,7 +879,7 @@ function getZ(pct) {
     94:1.555,95:1.645,96:1.751,97:1.881,98:2.054,99:2.326
   };
   if (zTable[pct] !== undefined) return zTable[pct];
-  // IntEROolate
+  // Interpolate
   const keys = Object.keys(zTable).map(Number).sort((a,b)=>a-b);
   for (let i=0;i<keys.length-1;i++) {
     if (pct >= keys[i] && pct <= keys[i+1]) {
@@ -1314,7 +1335,7 @@ function renderSimPairs() {
   const mesToDias = m => parseFloat((m * 30).toFixed(2));
   const diasToMes = d => parseFloat((d / 30).toFixed(6));
 
-  const pairsHTML = pairs.map(p => {
+  const pairsHTML = pairs.map((p, idx) => {
     const orig = ltMap[p.key.toUpperCase()] || { ltMedio: 0, ltDesvio: 0 };
     const ov   = ltOverrides[p.key.toUpperCase()] || {};
     // ltOverrides armazena em MESES internamente; exibir em DIAS
@@ -1326,8 +1347,15 @@ function renderSimPairs() {
     const origDesvioDias = mesToDias(orig.ltDesvio);
     const isModified = ov.ltMedio !== undefined || ov.ltDesvio !== undefined;
     const pairId = p.key.replace(/[^a-zA-Z0-9]/g,'_');
+
+    // Botão "Replicar para todos" — só renderizado no primeiro card (idx === 0)
+    const isFirst = idx === 0;
+    const replicaSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+    const mediaReplicaBtn  = isFirst ? `<button class="sim-replicate-btn${curMediaDias  !== origMediaDias  || (ov.ltMedio  !== undefined) ? ' has-value' : ''}" id="rep_media_${pairId}"  onclick="replicateField('ltMedio','lt_media_${pairId}')">${replicaSvg} Replicar para todos</button>` : '';
+    const desvioReplicaBtn = isFirst ? `<button class="sim-replicate-btn${curDesvioDias !== origDesvioDias || (ov.ltDesvio !== undefined) ? ' has-value' : ''}" id="rep_desvio_${pairId}" onclick="replicateField('ltDesvio','lt_desvio_${pairId}')">${replicaSvg} Replicar para todos</button>` : '';
+
     return `
-    <div class="sim-pair ${isModified?'modified':''}" id="pair_${pairId}">
+    <div class="sim-pair ${isModified?'modified':''}" id="pair_${pairId}" data-pair-idx="${idx}">
       <div class="sim-pair-header">
         <div>
           <div class="sim-pair-title">${p.empresa} — Classe ${p.classe}</div>
@@ -1350,6 +1378,7 @@ function renderSimPairs() {
             <span class="sim-field-unit">dias</span>
           </div>
           <div class="sim-original">Original: ${origMediaDias} dias (${fmtNum(orig.ltMedio,4)} meses)</div>
+          ${mediaReplicaBtn}
         </div>
         <div class="sim-field">
           <label>Desvio Padrão LT</label>
@@ -1365,6 +1394,7 @@ function renderSimPairs() {
             <span class="sim-field-unit">dias</span>
           </div>
           <div class="sim-original">Original: ${origDesvioDias} dias (${fmtNum(orig.ltDesvio,4)} meses)</div>
+          ${desvioReplicaBtn}
         </div>
       </div>
     </div>`;
@@ -1395,6 +1425,14 @@ function onSimInputDias(input, pairId) {
     delete ltOverrides[key][field];
     input.classList.remove('changed');
     if (Object.keys(ltOverrides[key]).length === 0) delete ltOverrides[key];
+  }
+
+  // Mostrar/ocultar botão "Replicar" do primeiro card (se existir)
+  const repBtnId = field === 'ltMedio' ? 'rep_media_' + pairId : 'rep_desvio_' + pairId;
+  const repBtn = document.getElementById(repBtnId);
+  if (repBtn) {
+    const hasValue = input.value !== '' && !isNaN(diasVal) && diasVal >= 0;
+    repBtn.classList.toggle('has-value', hasValue);
   }
 
   // Mark pair card
@@ -1452,6 +1490,41 @@ function onSimInputDias(input, pairId) {
   } else {
     const impact = document.querySelector('.sim-impact');
     if (impact) impact.remove();
+  }
+}
+
+// replicateField: copia o valor do primeiro campo visível para todos os demais cards filtrados
+function replicateField(field, sourceInputId) {
+  const sourceInput = document.getElementById(sourceInputId);
+  if (!sourceInput) return;
+
+  const diasVal = parseFloat(sourceInput.value);
+  if (isNaN(diasVal) || diasVal < 0) {
+    showToast('⚠️ Digite um valor válido antes de replicar', 'error');
+    return;
+  }
+
+  // Todos os inputs do mesmo campo nos cards visíveis (exceto o primeiro)
+  const allInputs = document.querySelectorAll(
+    `#simBody input[data-field="${field}"]`
+  );
+
+  let count = 0;
+  allInputs.forEach(inp => {
+    if (inp.id === sourceInputId) return; // pula o próprio fonte
+    // Simula digitação: seta valor e dispara onSimInputDias
+    inp.value = diasVal;
+    const pairIdMatch = inp.id.match(/^lt_(?:media|desvio)_(.+)$/);
+    if (pairIdMatch) {
+      onSimInputDias(inp, pairIdMatch[1]);
+      count++;
+    }
+  });
+
+  if (count === 0) {
+    showToast('ℹ️ Nenhum outro card para replicar nesta visão', '');
+  } else {
+    showToast(`✅ Valor de ${diasVal} dias replicado para mais ${count} combinação${count>1?'ões':''}`, 'success');
   }
 }
 
